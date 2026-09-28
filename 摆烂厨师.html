@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>KLM Lyric Tracker Player</title>
+    <style>
+        /* 基础重置与容器样式 */
+        body { margin: 0; padding: 20px 0; background: #050510; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        .klm_split_k2_box * { margin: 0; padding: 0; box-sizing: border-box; }
+        .klm_split_k2_box {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+            width: 100%; max-width: 420px; height: auto; max-height: 980px;
+            margin: 0 auto;
+            background: linear-gradient(160deg, #0b0b1a 0%, #151030 50%, #0a1628 100%);
+            color: #e0e0e0; padding: 14px 12px; line-height: 1.5;
+            overflow: hidden; border-radius: 12px;
+            position: relative;
+        }
+
+        /* 动画定义 */
+        @keyframes klm_border_glow { 0% { border-color: rgba(124,92,255,.35); } 50% { border-color: rgba(80,200,255,.4); } 100% { border-color: rgba(124,92,255,.35); } }
+        @keyframes klm_shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        @keyframes klm_eq { 0%,100% { height: 3px; } 50% { height: 12px; } }
+        @keyframes klm_lyric_in { 0% { opacity: 0; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes klm_bar_flow { 0% { transform: scaleX(.3); } 50% { transform: scaleX(1); } 100% { transform: scaleX(.3); } }
+
+        /* 组件样式 */
+        .klm_outer_fs {
+            border: 1px solid rgba(124,92,255,.3); border-radius: 14px;
+            padding: 14px 10px 10px;
+            background: rgba(12,10,35,.7);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            animation: klm_border_glow 6s ease infinite;
+        }
+        .klm_outer_fs legend {
+            font-size: 13px; font-weight: 700; color: transparent;
+            background: linear-gradient(90deg, #a78bfa, #60a5fa, #f472b6, #a78bfa);
+            background-size: 300% 100%;
+            -webkit-background-clip: text; background-clip: text;
+            animation: klm_shimmer 5s linear infinite;
+            padding: 2px 12px; letter-spacing: 1px;
+        }
+
+        .klm_nav { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 8px; }
+        .klm_nav_btn {
+            width: 36px; height: 36px; border: 1px solid rgba(124,92,255,.3);
+            border-radius: 50%; background: rgba(124,92,255,.1); color: #c4b5fd;
+            font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all .2s; -webkit-tap-highlight-color: transparent; user-select: none;
+        }
+        .klm_nav_btn:active { background: rgba(124,92,255,.35); transform: scale(.92); }
+        
+        .klm_song_info { text-align: center; flex: 1; padding: 0 8px; overflow: hidden; }
+        .klm_song_title { font-size: 14px; font-weight: 700; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+        .klm_song_artist { font-size: 10px; color: rgba(167,139,250,.7); margin-top: 2px; display: block; }
+        
+        .klm_eq_row { display: flex; justify-content: center; align-items: flex-end; gap: 2px; height: 14px; margin-top: 4px; }
+        .klm_eq_bar { width: 2px; background: linear-gradient(to top, #7c5cff, #50c8ff); border-radius: 1px; animation: klm_eq .8s ease-in-out infinite; }
+
+        .klm_audio_box { padding: 4px 6px; background: rgba(124,92,255,.06); border-radius: 8px; border: 1px solid rgba(124,92,255,.12); margin: 6px 0 8px; }
+        .klm_audio_box audio { width: 100%; height: 34px; border-radius: 6px; filter: hue-rotate(240deg) brightness(.8); outline: none; }
+        
+        .klm_progress_bar { height: 2px; background: rgba(124,92,255,.15); border-radius: 1px; margin: 4px 0 0; overflow: hidden; }
+        .klm_progress_fill { height: 100%; width: 0%; background: linear-gradient(90deg, #7c5cff, #50c8ff); border-radius: 1px; transition: width .3s linear; }
+
+        .klm_lyrics_fs { border: 1px solid rgba(124,92,255,.15); border-radius: 10px; margin: 0; padding: 0; background: rgba(8,6,25,.6); overflow: hidden; }
+        .klm_lyrics_fs legend { font-size: 10px; color: rgba(129,140,248,.7); padding: 0 8px; letter-spacing: 1px; }
+        
+        .klm_lyrics_scroll {
+            height: 420px; overflow-y: auto; padding: 10px 12px;
+            scroll-behavior: smooth; -webkit-overflow-scrolling: touch;
+        }
+        .klm_lyrics_scroll::-webkit-scrollbar { width: 2px; }
+        .klm_lyrics_scroll::-webkit-scrollbar-thumb { background: rgba(124,92,255,.3); border-radius: 1px; }
+        .klm_lyrics_scroll::-webkit-scrollbar-track { background: transparent; }
+
+        .klm_lyric_line { padding: 6px 0; opacity: .3; transition: all .35s ease; border-bottom: 1px solid rgba(124,92,255,.04); }
+        .klm_lyric_line.klm_active { opacity: 1; animation: klm_lyric_in .35s ease; }
+        .klm_lyric_line.klm_past { opacity: .5; }
+        
+        .klm_lyric_en { font-size: 13px; color: #cbd5e1; font-weight: 500; line-height: 1.45; word-break: break-word; display: block; }
+        .klm_lyric_cn { font-size: 11px; color: rgba(167,139,250,.7); margin-top: 2px; line-height: 1.4; padding-left: 6px; border-left: 2px solid rgba(124,92,255,.2); display: block; }
+        
+        .klm_active .klm_lyric_en { color: #fff; font-weight: 600; }
+        .klm_active .klm_lyric_cn { color: rgba(196,181,253,.9); border-left-color: rgba(124,92,255,.6); }
+        
+        .klm_time_badge { display: inline-block; font-size: 9px; color: #6366f1; background: rgba(99,102,241,.1); padding: 0 5px; border-radius: 3px; font-family: monospace; margin-bottom: 2px; letter-spacing: .3px; }
+        .klm_active .klm_time_badge { background: rgba(99,102,241,.25); color: #a78bfa; }
+
+        .klm_footer_bar { display: flex; justify-content: center; align-items: center; gap: 4px; padding: 8px 0 2px; }
+        .klm_dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(124,92,255,.25); transition: all .3s; }
+        .klm_dot.klm_dot_active { background: #7c5cff; box-shadow: 0 0 6px rgba(124,92,255,.5); }
+        
+        .klm_wave { display: flex; justify-content: center; gap: 2px; padding: 4px 0; }
+        .klm_wave_bar { width: 14px; height: 2px; background: rgba(124,92,255,.25); border-radius: 1px; animation: klm_bar_flow 1.8s ease infinite; }
+    </style>
+</head>
+<body>
+
+<!-- 原始内容容器开始 -->
+<div class="klm_split_k2_box">
+    <form onsubmit="return false">
+        <fieldset class="klm_outer_fs">
+            <legend>♫ Lyric Tracker ♫</legend>
+
+            <p class="klm_nav">
+                <span class="klm_nav_btn" onclick="klmSwitch(-1)">◀</span>
+                <span class="klm_song_info">
+                    <span class="klm_song_title" id="klm_s_title">Monsters (feat. blackbear)</span>
+                    <br>
+                    <span class="klm_song_artist" id="klm_s_artist">All Time Low &amp; Blackbear</span>
+                    <span class="klm_eq_row">
+                        <span class="klm_eq_bar" style="animation-delay:0s"></span>
+                        <span class="klm_eq_bar" style="animation-delay:.12s"></span>
+                        <span class="klm_eq_bar" style="animation-delay:.24s"></span>
+                        <span class="klm_eq_bar" style="animation-delay:.36s"></span>
+                        <span class="klm_eq_bar" style="animation-delay:.48s"></span>
+                    </span>
+                </span>
+                <span class="klm_nav_btn" onclick="klmSwitch(1)">▶</span>
+            </p>
+
+            <p class="klm_audio_box">
+                <audio id="klm_audio" controls preload="none">
+                    <source id="klm_src" src="http://music.163.com/song/media/outer/url?id=1436357204.mp3" type="audio/mpeg">
+                </audio>
+            </p>
+            <p class="klm_progress_bar"><span class="klm_progress_fill" id="klm_prog"></span></p>
+
+            <fieldset class="klm_lyrics_fs">
+                <legend>♪ LYRICS</legend>
+                <p class="klm_lyrics_scroll" id="klm_lyrics"></p>
+            </fieldset>
+
+            <p class="klm_footer_bar">
+                <span class="klm_dot klm_dot_active" id="klm_dot_0"></span>
+                <span class="klm_dot" id="klm_dot_1"></span>
+                <span class="klm_dot" id="klm_dot_2"></span>
+            </p>
+            <p class="klm_wave">
+                <span class="klm_wave_bar" style="animation-delay:0s"></span>
+                <span class="klm_wave_bar" style="animation-delay:.3s"></span>
+                <span class="klm_wave_bar" style="animation-delay:.6s"></span>
+                <span class="klm_wave_bar" style="animation-delay:.9s"></span>
+                <span class="klm_wave_bar" style="animation-delay:1.2s"></span>
+            </p>
+        </fieldset>
+    </form>
+</div>
+<!-- 原始内容容器结束 -->
+
+<script>
+    var klm_songs = [
+        {
+            title: "Monsters (feat. blackbear)",
+            artist: "All Time Low & Blackbear",
+            src: "http://music.163.com/song/media/outer/url?id=1436357204.mp3",
+            lyrics: [
+                [0, "", "作词: Alex Gaskarth / Jack Barakat / Andrew Goldstein / Kevin Fisher / Matthew Musto"],
+                [0.35, "Why do all the monsters come out at night?", "为什么所有的怪物都在夜晚出没？"],
+                [3.88, "Why do we sleep when we want to hide?", "为什么想躲藏时却选择了沉睡？"],
+                [6.91, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [15.5, "Another day, 'nother headache in this hangover hotel", "又一天，在这宿醉旅馆里再次头痛"],
+                [21.07, "Gettin' used to the rhythm, yeah, I know this beat too well", "渐渐习惯这节奏，这节拍我太熟悉"],
+                [27.13, "Tunnel visions got me feeling, you're the only one I see", "狭隘的视野让我觉得，你是我眼中唯一的存在"],
+                [32.3, "But I know what's missing, where I'm swimmin'", "但我深知缺少了什么，在我沉浸其中的地方"],
+                [35.41, "In my lonely luxury", "在我孤独的奢华中"],
+                [37.6, "I'm wondering why do all the monsters come out at night?", "我在想，为什么怪物都在夜晚出没？"],
+                [42.44, "Why do we sleep when we want to hide?", "为什么想躲藏时却选择了沉睡？"],
+                [45.34, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [50.98, "Why am I a sucker for all your lies?", "为什么我总是被你所有的谎言所蛊惑？"],
+                [54.19, "Strung out like laundry on every line", "像晾在每根绳上的衣物般被拉扯殆尽"],
+                [57.14, "Why do I come back to you, like I don't mind if you fxck up my life?", "为什么我回到你身边，好像不在意你毁掉我的生活？"],
+                [62.37, "I'm addicted to the way you hurt, the way you contradict me", "我沉迷于你伤害我的方式，你否定我的方式"],
+                [65.24, "I swear everything look worse at night, I think I'm overthinking", "我发誓夜晚一切看起来更糟，我想是我多虑了"],
+                [67.98, "I don't care who I might hurt along the way, I'm fxckin' sinking", "我不在乎一路上会伤害谁，我在拼命地沉沦"],
+                [70.88, "Into every word, I don't care if you're lyin' when I'm drinking", "陷入你的每句话中，喝酒时我不在乎你是否在说谎"],
+                [73.91, "So, tell me pretty lies, look me in my face", "所以对我撒美丽的谎吧，看着我的脸"],
+                [77.21, "Tell me that you love me, even if it's fake", "告诉我你爱我，即使是假的也好"],
+                [80.13, "You can lead me on and leave these questions in my sheets", "你可以引诱我，把疑问留在我的床单上"],
+                [82.72, "I'm under it, I made my bed and I'm still wonderin'", "我深陷其中，自食其果却仍在追问"],
+                [85.25, "I'm wondering why do all the monsters come out at night?", "我在想，为什么怪物都在夜晚出没？"],
+                [89.8, "Why do we sleep when we want to hide?", "为什么想躲藏时却选择了沉睡？"],
+                [92.75, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [98.0, "Why am I a sucker for all your lies?", "为什么我总是被你所有的谎言所蛊惑？"],
+                [101.6, "Strung out like laundry on every line", "像晾在每根绳上的衣物般被拉扯殆尽"],
+                [104.61, "Why do I come back to you, like I don't mind if you fxck up my life?", "为什么我回到你身边，好像不在意你毁掉我的生活？"],
+                [110.8, "Thinkin' about you, you're in my head", "想念着你，你占据着我的脑海"],
+                [113.57, "Even without you, I still feel dead", "即使没有你，我依然感觉行尸走肉"],
+                [116.44, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [121.69, "Dead, thinking about you, you're in my head", "心如死灰，想念着你，你占据我的脑海"],
+                [125.32, "Even without you, I still feel dead", "即使没有你，我依然感觉行尸走肉"],
+                [128.38, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [135.41, "I'm wondering why do all the monsters come out at night?", "我在想，为什么怪物都在夜晚出没？"],
+                [140.13, "Why do we sleep when we want to hide? (Hide)", "为什么想躲藏时却选择了沉睡？（躲藏）"],
+                [143.16, "Why do I run back to you, like I don't mind if you fxck up my life?", "为什么我奔向你，好像不在意你毁掉我的生活？"],
+                [148.34, "Why am I a sucker for all your lies?", "为什么我总是被你所有的谎言所蛊惑？"],
+                [151.97, "Strung out like laundry on every line", "像晾在每根绳上的衣物般被拉扯殆尽"],
+                [154.87, "Why do I come back to you, like I don't mind if you fxck up my life?", "为什么我回到你身边，好像不在意你毁掉我的生活？"],
+                [168.82, "Like I don't mind if you fxck up my life", "好像我不在意你毁掉我的生活"]
+            ]
+        },
+        {
+            title: "Dead Man Walking",
+            artist: "Grant & ellis",
+            src: "http://music.163.com/song/media/outer/url?id=1960246213.mp3",
+            lyrics: [
+                [6.73, "Do you believe me when I say I'm never like this?", "当我说我从不这样时，你相信我吗？"],
+                [11.14, "Do you need me the way you say you do?", "你真的像你说的那样需要我吗？"],
+                [15.24, "Treading lightly through the water, through the light and darkness", "小心翼翼地涉水而行，穿过光明与黑暗"],
+                [19.71, "If I'm not careful my love might consume you", "若我不够小心，我的爱可能会将你吞噬"],
+                [23.7, "Pulling me back into my body, I wanna take my time with you", "将我拉回躯壳之中，我想与你慢慢相守"],
+                [28.31, "Your lips are gonna haunt me if what you say is true", "如果你说的是真的，你的双唇将萦绕我心"],
+                [32.51, "Pulling me back into my body, I'm just a dead man walking", "将我拉回躯壳之中，我不过是行尸走肉"],
+                [36.94, "I'm just a pawn but nothing hurts better than you", "我只是枚棋子，但没有什么比你的伤痛更让我着迷"],
+                [49.65, "Pulling me back into my body, I'm just a dead man walking", "将我拉回躯壳之中，我不过是行尸走肉"],
+                [54.31, "I'm just a pawn but nothing hurts better than you", "我只是枚棋子，但没有什么比你的伤痛更让我着迷"],
+                [66.97, "(Pulling me)", "（将我拉回）"],
+                [69.22, "(I, I'm)", "（我，我是）"],
+                [70.4, "(I'm just pulling me)", "（我只是在将自己拉回）"],
+                [75.65, "Are we doomed to the fate laid out before us", "我们是否注定要走向摆在面前的命运"],
+                [80.26, "Can you lift a curse with a single kiss?", "你能用一个吻来解除诅咒吗？"],
+                [84.45, "Standing on the edge of the ever-growing abyss", "站在不断扩大的深渊边缘"],
+                [89.3, "Does it really have to end like this?", "一切真的必须这样收场吗？"],
+                [93.09, "Pulling me back into my body, I wanna take my time with you", "将我拉回躯壳之中，我想与你慢慢相守"],
+                [97.49, "Your lips are gonna haunt me if what you say is true", "如果你说的是真的，你的双唇将萦绕我心"],
+                [101.59, "Pulling me back into my body, I'm just a dead man walking", "将我拉回躯壳之中，我不过是行尸走肉"],
+                [106.11, "I'm just a pawn but nothing hurts better than you", "我只是枚棋子，但没有什么比你的伤痛更让我着迷"],
+                [118.75, "(Pulling me)", "（将我拉回）"],
+                [120.95, "(I, I'm)", "（我，我是）"],
+                [122.33, "(I'm just pulling me)", "（我只是在将自己拉回）"],
+                [127.65, "(Pulling me)", "（将我拉回）"],
+                [129.64, "(I, I'm)", "（我，我是）"],
+                [131.13, "(...pulling me)", "（……将我拉回）"],
+                [134.35, "If what you say is true", "如果你说的是真的"],
+                [136.15, "Pulling me back into my body, I'm just a dead man walking", "将我拉回躯壳之中，我不过是行尸走肉"],
+                [140.7, "I'm just a pawn but nothing hurts better than you", "我只是枚棋子，但没有什么比你的伤痛更让我着迷"],
+                [151.22, "Nothing hurts better than you", "没有什么比你的伤痛更让我着迷"],
+                [155.42, "And nothing hurts better than you", "没有什么比你的伤痛更让我着迷"]
+            ]
+        },
+        {
+            title: "Self Destructive",
+            artist: "Vorsa",
+            src: "http://music.163.com/song/media/outer/url?id=1460244210.mp3",
+            lyrics: [
+                [18.45, "Self-destructive tendencies", "自我毁灭的倾向"],
+                [23.73, "That I have are killing me slowly", "正慢慢地将我吞噬"],
+                [28.25, "But that's fine", "但那没关系"],
+                [30.84, "I like the way it feels", "我喜欢那种感觉"],
+                [33.85, "Yeah, I, I like the way it feels", "是啊，我，我喜欢那种感觉"],
+                [38.49, "When I think that I'm leaving", "当我觉得我要离开的时候"],
+                [42.67, "And I hurt myself to prove that I'm human", "我伤害自己来证明我还是个人"],
+                [49.77, "Where did I go wrong this time?", "这次我又在哪里出了错？"],
+                [55.78, "If I don't wake up", "如果我醒不过来"],
+                [58.46, "I'm better off", "那反而更好"],
+                [60.68, "I'll finally catch up on my sleep", "我终于可以好好补一觉了"],
+                [65.45, "I've been so lost", "我一直如此迷失"],
+                [67.97, "3 a.m. thoughts are building a new home just for me", "凌晨三点的思绪正在为我建造一个新家"],
+                [75.16, "If I don't wake up", "如果我醒不过来"],
+                [77.65, "I'm better off", "那反而更好"],
+                [80.14, "I'll finally catch up on my sleep", "我终于可以好好补一觉了"],
+                [84.8, "I've been so lost", "我一直如此迷失"],
+                [87.23, "3 a.m. thoughts are building a new home just for me", "凌晨三点的思绪正在为我建造一个新家"],
+                [95.64, "Tell me I won't be this way forever", "告诉我我不会永远这样"],
+                [102.63, "I can't do this for much longer", "我撑不了太久了"],
+                [107.39, "Does anyone give a ****?", "有人在乎吗？"],
+                [110.51, "I don't think that's the case", "我觉得并没有"],
+                [114.89, "I wanna be anywhere else but here", "我想去任何地方，除了这里"],
+                [120.81, "Lately it's been getting hard to feel", "最近越来越难以感受到什么了"],
+                [125.33, "But I'm getting used to it", "但我渐渐习惯了"],
+                [132.43, "If I don't wake up", "如果我醒不过来"],
+                [135.4, "I'm better off", "那反而更好"],
+                [137.58, "I'll finally catch up on my sleep", "我终于可以好好补一觉了"],
+                [142.35, "I've been so lost", "我一直如此迷失"],
+                [144.85, "3 a.m. thoughts are building a new home just for me", "凌晨三点的思绪正在为我建造一个新家"],
+                [171.32, "If I don't wake up", "如果我醒不过来"],
+                [173.89, "I'm better off", "那反而更好"],
+                [176.17, "I'll finally catch up on my sleep", "我终于可以好好补一觉了"],
+                [180.76, "I've been so lost", "我一直如此迷失"],
+                [183.12, "3 a.m. thoughts are building a new home just for me", "凌晨三点的思绪正在为我建造一个新家"]
+            ]
+        }
+    ];
+
+    var klm_cur = 0;
+    var klm_audio = document.getElementById("klm_audio");
+    var klm_src = document.getElementById("klm_src");
+    var klm_box = document.getElementById("klm_lyrics");
+    var klm_prog = document.getElementById("klm_prog");
+    var klm_lastIdx = -1;
+
+    function klmFmt(s) {
+        var m = Math.floor(s / 60);
+        var ss = Math.floor(s % 60);
+        return (m < 10 ? "0" : "") + m + ":" + (ss < 10 ? "0" : "") + ss;
+    }
+
+    function klmRender() {
+        var song = klm_songs[klm_cur];
+        document.getElementById("klm_s_title").textContent = song.title;
+        document.getElementById("klm_s_artist").textContent = song.artist;
+        klm_src.src = song.src;
+        klm_audio.load();
+        klm_lastIdx = -1;
+        var h = "";
+        for (var i = 0; i < song.lyrics.length; i++) {
+            var l = song.lyrics[i];
+            h += '<p class="klm_lyric_line" id="klm_l_' + i + '">';
+            h += '<span class="klm_time_badge">' + klmFmt(l[0]) + '</span><br>';
+            h += '<span class="klm_lyric_en">' + l[1] + '</span><br>';
+            h += '<span class="klm_lyric_cn">' + l[2] + '</span>';
+            h += '</p>';
+        }
+        klm_box.innerHTML = h;
+        klm_box.scrollTop = 0;
+        for (var d = 0; d < 3; d++) {
+            var dot = document.getElementById("klm_dot_" + d);
+            dot.className = d === klm_cur ? "klm_dot klm_dot_active" : "klm_dot";
+        }
+    }
+
+    function klmSwitch(dir) {
+        klm_audio.pause();
+        klm_cur = (klm_cur + dir + 3) % 3;
+        klmRender();
+    }
+
+    klm_audio.addEventListener("timeupdate", function () {
+        var t = klm_audio.currentTime;
+        var song = klm_songs[klm_cur];
+        var dur = klm_audio.duration || 1;
+        klm_prog.style.width = (t / dur * 100) + "%";
+        var idx = -1;
+        for (var i = song.lyrics.length - 1; i >= 0; i--) {
+            if (t >= song.lyrics[i][0]) { idx = i; break; }
+        }
+        if (idx !== klm_lastIdx) {
+            var lines = klm_box.querySelectorAll(".klm_lyric_line");
+            for (var j = 0; j < lines.length; j++) {
+                if (j < idx) { lines[j].className = "klm_lyric_line klm_past"; }
+                else if (j === idx) { lines[j].className = "klm_lyric_line klm_active"; }
+                else { lines[j].className = "klm_lyric_line"; }
+            }
+            if (idx >= 0) {
+                var el = document.getElementById("klm_l_" + idx);
+                if (el) {
+                    var top = el.offsetTop - klm_box.offsetTop;
+                    var boxH = klm_box.clientHeight;
+                    klm_box.scrollTop = top - boxH / 3;
+                }
+            }
+            klm_lastIdx = idx;
+        }
+    });
+
+    // 初始化渲染
+    klmRender();
+</script>
+
+</body>
+</html>
